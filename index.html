@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contador de Histórias AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-blue-50 flex items-center justify-center min-h-screen">
+
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-8 m-4">
+        <header class="text-center mb-6">
+            <h1 class="text-4xl font-bold text-blue-800">Contador de Histórias AI 🎙️</h1>
+            <p class="text-lg text-gray-600 mt-2">Dê-me um tema e eu criarei uma história infantil mágica para você.</p>
+        </header>
+
+        <!-- Área de Input -->
+        <div class="flex flex-col sm:flex-row gap-3 mb-6">
+            <input 
+                type="text" 
+                id="story-theme" 
+                placeholder="Ex: um coelho que queria voar..."
+                class="flex-1 border border-gray-300 rounded-lg py-3 px-5 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+            >
+            <button 
+                id="generate-button" 
+                class="bg-blue-600 text-white rounded-lg px-8 py-3 text-lg font-semibold shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 active:scale-95 disabled:bg-gray-400"
+            >
+                Criar História
+            </button>
+        </div>
+
+        <!-- Área de Resultado -->
+        <div id="result-container" class="bg-gray-50 border border-gray-200 rounded-lg p-6 min-h-[200px] relative hidden">
+            <!-- Overlay de Loading -->
+            <div id="loading-spinner" class="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center rounded-lg z-10 hidden">
+                <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+
+            <!-- Botão de Áudio (escondido) -->
+            <button id="play-audio-button" class="absolute top-4 right-4 bg-blue-100 text-blue-700 rounded-full p-3 shadow-sm hover:bg-blue-200 focus:outline-none transition transform hover:scale-110 hidden disabled:opacity-50" title="Ouvir a história">
+                <!-- Ícone Play -->
+                <svg id="icon-play" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                </svg>
+                <!-- Ícone Pause (escondido) -->
+                <svg id="icon-pause" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 hidden">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                </svg>
+                <!-- Ícone Loading Áudio (escondido) -->
+                <svg id="icon-audio-loading" class="w-6 h-6 animate-spin hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </button>
+            
+            <!-- Texto da História -->
+            <p id="story-text" class="text-gray-800 text-lg leading-relaxed whitespace-pre-wrap"></p>
+        </div>
+        
+        <!-- Área de Erro -->
+        <div id="error-message" class="bg-red-100 border border-red-300 text-red-800 rounded-lg p-4 mt-4 text-center hidden">
+            <strong>Ops!</strong> <span id="error-text"></span>
+        </div>
+    </div>
+
+    <script>
+        // --- Endpoints da API ---
+        // ATENÇÃO: Substitua pela URL do seu backend no Render
+        const API_URL_STORY = "https://SEU-BACKEND-NOVO.onrender.com/gerar_historia";
+        const API_URL_AUDIO = "https://SEU-BACKEND-NOVO.onrender.com/gerar_audio";
+
+        // --- Elementos do DOM ---
+        const themeInput = document.getElementById('story-theme');
+        const generateButton = document.getElementById('generate-button');
+        const resultContainer = document.getElementById('result-container');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const storyTextElement = document.getElementById('story-text');
+        const errorMessage = document.getElementById('error-message');
+        const errorText = document.getElementById('error-text');
+        
+        // --- Elementos de Áudio ---
+        const playButton = document.getElementById('play-audio-button');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const iconAudioLoading = document.getElementById('icon-audio-loading');
+        
+        let currentAudio = null; // Armazena o objeto de áudio
+        let currentStoryText = ""; // Armazena o texto da história atual
+
+        // --- Funções Auxiliares de Áudio ---
+
+        // 1. Converte Base64 para ArrayBuffer
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        // 2. Converte Áudio PCM (da Gemini) para um Blob WAV (que o navegador toca)
+        function pcmToWav(pcmData, sampleRate, numChannels = 1, bitsPerSample = 16) {
+            const dataView = new DataView(new ArrayBuffer(44));
+            const pcmView = new Int16Array(pcmData);
+
+            // RIFF
+            dataView.setUint32(0, 0x52494646, false); // "RIFF"
+            dataView.setUint32(4, 36 + pcmView.byteLength, true);
+            dataView.setUint32(8, 0x57415645, false); // "WAVE"
+            // fmt
+            dataView.setUint32(12, 0x666d7420, false); // "fmt "
+            dataView.setUint32(16, 16, true); // Sub-chunk 1 size (16 for PCM)
+            dataView.setUint16(20, 1, true); // Audio format (1 for PCM)
+            dataView.setUint16(22, numChannels, true);
+            dataView.setUint32(24, sampleRate, true);
+            dataView.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true); // Byte rate
+            dataView.setUint16(32, numChannels * (bitsPerSample / 8), true); // Block align
+            dataView.setUint16(34, bitsPerSample, true);
+            // data
+            dataView.setUint32(36, 0x64617461, false); // "data"
+            dataView.setUint32(40, pcmView.byteLength, true);
+
+            return new Blob([dataView, pcmView], { type: 'audio/wav' });
+        }
+        
+        // 3. Toca o Áudio
+        function playAudio(audioData, mimeType) {
+            // Extrai o sampleRate do mimeType (ex: "audio/L16; rate=24000")
+            const rateMatch = mimeType.match(/rate=(\d+)/);
+            if (!rateMatch) {
+                console.error("MimeType não especificou a 'rate'", mimeType);
+                showError("Erro ao processar áudio: 'rate' não encontrada.");
+                return;
+            }
+            const sampleRate = parseInt(rateMatch[1], 10);
+            
+            // Converte o PCM Base64 para um WAV Blob
+            const pcmBuffer = base64ToArrayBuffer(audioData);
+            const wavBlob = pcmToWav(pcmBuffer, sampleRate);
+            const audioUrl = URL.createObjectURL(wavBlob);
+
+            // Para o áudio anterior, se estiver tocando
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.onended = null;
+            }
+            
+            currentAudio = new Audio(audioUrl);
+            currentAudio.play();
+            
+            // Atualiza ícones
+            iconAudioLoading.classList.add('hidden');
+            iconPlay.classList.add('hidden');
+            iconPause.classList.remove('hidden');
+            
+            currentAudio.onended = () => {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+            };
+        }
+
+        // --- Funções Principais ---
+        
+        function showLoading(isLoading) {
+            loadingSpinner.classList.toggle('hidden', !isLoading);
+            generateButton.disabled = isLoading;
+            themeInput.disabled = isLoading;
+        }
+
+        function showError(message) {
+            errorMessage.classList.remove('hidden');
+            errorText.textContent = message;
+        }
+        
+        function resetState() {
+            errorMessage.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            storyTextElement.textContent = "";
+            currentStoryText = "";
+            playButton.classList.add('hidden');
+            if (currentAudio) {
+                currentAudio.pause();
+            }
+        }
+
+        // 1. GERAR HISTÓRIA (Texto)
+        async function handleGenerateStory() {
+            const query = themeInput.value.trim();
+            if (!query) {
+                showError("Por favor, digite um tema para a história.");
+                return;
+            }
+            
+            resetState();
+            showLoading(true);
+            resultContainer.classList.remove('hidden');
+
+            try {
+                const response = await fetch(API_URL_STORY, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || "Erro do servidor ao gerar história.");
+                }
+
+                const data = await response.json();
+                currentStoryText = data.story_text;
+                storyTextElement.textContent = currentStoryText;
+                playButton.classList.remove('hidden'); // Mostra o botão de play
+
+            } catch (error) {
+                console.error("Erro em handleGenerateStory:", error);
+                showError(error.message);
+                resultContainer.classList.add('hidden');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 2. GERAR ÁUDIO (Voz)
+        async function handlePlayAudio() {
+            if (!currentStoryText) return;
+            
+            // Se o áudio já estiver tocando, pausa
+            if (currentAudio && !currentAudio.paused) {
+                currentAudio.pause();
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                return;
+            }
+            // Se estiver pausado, continua
+            if (currentAudio && currentAudio.paused) {
+                currentAudio.play();
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                return;
+            }
+
+            // Se for a primeira vez, busca o áudio
+            playButton.disabled = true;
+            iconPlay.classList.add('hidden');
+            iconAudioLoading.classList.remove('hidden');
+            showError(''); // Limpa erros antigos
+
+            try {
+                const response = await fetch(API_URL_AUDIO, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text_to_speak: currentStoryText })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || "Erro do servidor ao gerar áudio.");
+                }
+
+                const data = await response.json();
+                playAudio(data.audio_base64, data.mime_type);
+                
+            } catch (error) {
+                console.error("Erro em handlePlayAudio:", error);
+                showError(error.message);
+                iconAudioLoading.classList.add('hidden');
+                iconPlay.classList.remove('hidden');
+            } finally {
+                playButton.disabled = false;
+            }
+        }
+
+        // --- Event Listeners ---
+        generateButton.addEventListener('click', handleGenerateStory);
+        themeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleGenerateStory();
+        });
+        playButton.addEventListener('click', handlePlayAudio);
+
+    </script>
+</body>
+</html>
