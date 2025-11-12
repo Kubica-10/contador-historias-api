@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+langchain-groq
+langchain-core
+pydantic==1.10.24
+httpx # Necessário para o main.py fazer a chamada para a API de TTS
