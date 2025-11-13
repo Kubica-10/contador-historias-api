@@ -2,6 +2,7 @@ import os
 import uvicorn
 # Removido o 'httpx' - não é mais necessário
 from fastapi import FastAPI, HTTPException
+# ### CORREÇÃO: Importar o CORSMiddleware DE VOLTA ###
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -19,9 +20,11 @@ app = FastAPI(
     description="Gera histórias infantis."
 )
 
+# ### CORREÇÃO: Adicionar o Middleware DE VOLTA ###
+# Este bloco permite que o seu frontend (Render) fale com o seu backend (Render)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"], # Permite todos (ou mude para a URL do seu frontend)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,7 +34,6 @@ app.add_middleware(
 # API KEYS (Lidas dos Segredos do Render)
 # ============================
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# Chave da Gemini REMOVIDA - não é mais necessária
 
 # ============================
 # MODELOS DE DADOS (Pydantic)
@@ -42,8 +44,6 @@ class QueryInput(BaseModel):
 
 class StoryOutput(BaseModel):
     story_text: str = Field(description="O texto da história infantil gerada")
-
-# Modelos de Áudio REMOVIDOS
 
 # ============================
 # 1. ENDPOINT: GERAR HISTÓRIA (Texto)
@@ -87,8 +87,6 @@ async def gerar_historia(input_data: QueryInput):
     except Exception as e:
         print(f"❌ Erro no Groq: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao gerar história: {e}")
-
-# Endpoint de Áudio REMOVIDO
 
 # ============================
 # INICIALIZAÇÃO (Para o Render)
